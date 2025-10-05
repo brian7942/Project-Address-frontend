@@ -1,0 +1,9 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Project:Address symbol">
+  <title>Project:Address symbol</title>
+  <!-- Pin -->
+  <path fill="#F97316" d="M128 16c-44.183 0-80 35.817-80 80 0 48.5 58.1 115.6 74.3 133.2 3 3.3 8.3 3.3 11.3 0C149.9 211.6 208 144.5 208 96c0-44.183-35.817-80-80-80z"></path>
+  <!-- Inner white circle (soft, for contrast) -->
+  <circle cx="128" cy="96" r="44" fill="#FFFFFF"></circle>
+  <!-- Address block (square) -->
+  <rect x="112" y="80" width="32" height="32" rx="6" ry="6" fill="#0D9488"></rect>
+</svg>

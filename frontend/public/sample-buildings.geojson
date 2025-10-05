@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "b-1", "name": "Building 1", "kind": "building" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[102.6170,17.9685],[102.6190,17.9685],[102.6190,17.9700],[102.6170,17.9700],[102.6170,17.9685]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "b-2", "name": "Building 2", "kind": "building" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[102.6195,17.9685],[102.6215,17.9685],[102.6215,17.9700],[102.6195,17.9700],[102.6195,17.9685]]]
+      }
+    }
+  ]
+}
