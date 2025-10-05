@@ -1,64 +1,131 @@
 "use client";
+
+import { memo, useMemo } from "react";
 import { GeoJSON } from "react-leaflet";
-import type {
-  FeatureCollection,
-  Geometry,
-  GeoJsonProperties,
-  Feature,
-} from "geojson";
+import type { GeoJSON as LeafletGeoJSON, Layer, LatLng } from "leaflet";
 import L from "leaflet";
-import { COLORS } from "@/lib/style";
+import type {
+  Geometry,
+  Feature,
+  Point,
+  LineString,
+  MultiLineString,
+  Polygon,
+  MultiPolygon,
+} from "geojson";
+import type {
+  BuildingFC,
+  BuildingProperties,
+  FeatureAnyGeom,
+} from "@/types/geo";
 
-type FC = FeatureCollection<Geometry, GeoJsonProperties>;
-type F = Feature<Geometry, GeoJsonProperties>;
+/**
+ * GeoJSON을 그대로 표시하는 범용 레이어.
+ * - 포인트는 circleMarker로 렌더링
+ * - 라인/폴리곤은 기본 스타일 적용
+ */
+type Props = {
+  /** GeoJSON FeatureCollection */
+  data: BuildingFC | {
+    type: "FeatureCollection";
+    features: Array<Feature<
+      Point | LineString | MultiLineString | Polygon | MultiPolygon,
+      Record<string, unknown>
+    >>;
+  };
+  /** 라벨/팝업에 표시할 속성 키 (예: "name") */
+  labelKey?: string;
+  /** 활성/선택 상태 등 외부에서 스타일에 반영하고 싶을 때 전달 */
+  isActiveFeature?: (f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>) => boolean;
+  /** 클릭 등 이벤트 핸들러 */
+  onFeatureClick?: (f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>) => void;
+  /** 마우스오버 핸들러 */
+  onFeatureHover?: (f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>) => void;
+  /** 마우스아웃 핸들러 */
+  onFeatureOut?: (f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>) => void;
+  /** GeoJSON 스타일 오버라이드 */
+  styleOverride?: (
+    f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>
+  ) => L.PathOptions | undefined;
+};
 
-export default function StaticLayer({
+function getDefaultStyle(
+  active: boolean
+): L.PathOptions {
+  return {
+    color: active ? "#ef4444" : "#2563eb",
+    weight: active ? 3 : 2,
+    opacity: 0.9,
+    fillOpacity: 0.2,
+  };
+}
+
+function StaticLayerImpl({
   data,
-  interactive = false,
-  onSelect,
-}: {
-  data: FC;
-  interactive?: boolean;
-  onSelect?: (f: F, layer: L.Layer) => void;
-}) {
+  labelKey = "name",
+  isActiveFeature,
+  onFeatureClick,
+  onFeatureHover,
+  onFeatureOut,
+  styleOverride,
+}: Props) {
+  const styleFn = useMemo(() => {
+    return (feat: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>): L.PathOptions => {
+      const active = isActiveFeature ? isActiveFeature(feat) : false;
+      const base = getDefaultStyle(active);
+      const override = styleOverride?.(feat);
+      return { ...base, ...(override ?? {}) };
+    };
+  }, [isActiveFeature, styleOverride]);
+
+  const pointToLayer = (
+    feat: Feature<Geometry, BuildingProperties | Record<string, unknown>>,
+    latlng: LatLng
+  ) => {
+    const active = isActiveFeature ? isActiveFeature(feat) : false;
+    const opts: L.CircleMarkerOptions = {
+      radius: active ? 5 : 4,
+      weight: 1,
+      opacity: 1,
+      fillOpacity: 0.7,
+    };
+    return L.circleMarker(latlng, opts);
+  };
+
+  const onEachFeature = (
+    feature: Feature<Geometry, BuildingProperties | Record<string, unknown>>,
+    layer: Layer
+  ) => {
+    // 안전 접근
+    const props = feature.properties ?? {};
+    // 라벨 추출
+    const labelValue = (props as Record<string, unknown>)[labelKey];
+    const label = typeof labelValue === "string" ? labelValue : "";
+
+    if (label) {
+      (layer as LeafletGeoJSON).bindTooltip?.(label, { sticky: true });
+    }
+
+    layer.on("click", () => {
+      onFeatureClick?.(feature);
+    });
+    layer.on("mouseover", () => {
+      onFeatureHover?.(feature);
+    });
+    layer.on("mouseout", () => {
+      onFeatureOut?.(feature);
+    });
+  };
+
   return (
     <GeoJSON
-      data={data as any}
-      filter={(
-        feat: Feature<Geometry, GeoJsonProperties>
-      ): boolean => {
-        const t = feat.geometry?.type;
-        const isPolyOrLine =
-          t === "Polygon" ||
-          t === "MultiPolygon" ||
-          t === "LineString" ||
-          t === "MultiLineString";
-        // 건물은 제외 (건물은 BuildingLayer에서 따로 처리)
-        return isPolyOrLine && (feat as any).properties?.kind !== "building";
-      }}
-      style={{ color: COLORS.primary, weight: 2, fillOpacity: 0.25 }}
-      onEachFeature={(
-        feature: Feature<Geometry, GeoJsonProperties>,
-        layer: L.Layer
-      ) => {
-        if (!interactive) {
-          // 비인터랙티브: 포인터 이벤트 끔 → 아래(건물) 클릭 방해 X
-          layer.on("add", () => {
-            const el = (layer as any).getElement?.();
-            if (el) el.style.pointerEvents = "none";
-          });
-          return;
-        }
-        if (onSelect) {
-          layer.on("click", () => onSelect(feature as F, layer));
-          layer.on("mouseover", () => {
-            if (layer instanceof L.Path) layer.setStyle({ weight: 3 });
-          });
-          layer.on("mouseout", () => {
-            if (layer instanceof L.Path) layer.setStyle({ weight: 2 });
-          });
-        }
-      }}
+      data={data as unknown as GeoJSON.GeoJsonObject}
+      style={styleFn}
+      pointToLayer={pointToLayer}
+      onEachFeature={onEachFeature}
     />
   );
 }
+
+export const StaticLayer = memo(StaticLayerImpl);
+export default StaticLayer;

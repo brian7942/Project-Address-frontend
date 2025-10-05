@@ -51,7 +51,7 @@ export default function AdminCascade({
       if (!abort) setCountries(list);
     })();
     return () => { abort = true; };
-  }, []);
+  }, [loaders]);
 
   useEffect(() => {
     if (!value.country) { setProvinces([]); setCities([]); setVillages([]); return; }

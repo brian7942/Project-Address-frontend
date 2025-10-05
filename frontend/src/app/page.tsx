@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { FeatureCollection, Geometry, GeoJsonProperties, Feature } from "geojson";
-import type { Map as LeafletMap } from "leaflet";
-import { buildAddressString, type AdminForm } from "@/lib/address";
+import type { Map as LeafletMap, Layer, LatLngBoundsLiteral } from "leaflet";
 
 // shadcn/ui
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
@@ -20,47 +19,61 @@ type FC = FeatureCollection<Geometry, GeoJsonProperties>;
 type F = Feature<Geometry, GeoJsonProperties>;
 type Option = { value: string; label: string };
 
-// AdminForm 확장(로컬 타입) — district만 추가
-type AdminFormEx = AdminForm & { district?: string };
+// Leaflet Layer 중 bringToFront를 가진 Path 계열만 안전 호출하기 위한 협소 타입
+type BringToFrontCapable = Layer & { bringToFront?: () => void };
+
+// 페이지 로컬 UI 상태 타입 (드롭다운 값 보관용)
+type AdminUI = {
+  country: string; // ISO3 ("LAO" | "KHM")
+  state: string;   // province code/id
+  district: string;
+  city: string;
+  village: string;
+};
 
 // -------- 유틸: 다양한 스키마 안전 대응 --------
-function pickProvinceCode(props: Record<string, any>): string | undefined {
-  return (
-    props.GID_1 ??
-    props.ADM1_PCODE ??
-    props.PCODE ??
-    props.CODE_1 ??
-    props.ID_1 ??
-    props.PROV_CODE ??
-    props.province_id ??
-    props.state ??
-    props.state_id ??
-    undefined
-  )?.toString();
+function pickProvinceCode(props: Record<string, unknown>): string | undefined {
+  const p = props as Record<string, unknown>;
+  const v =
+    (p.GID_1 ??
+      p.ADM1_PCODE ??
+      p.PCODE ??
+      p.CODE_1 ??
+      p.ID_1 ??
+      p.PROV_CODE ??
+      p.province_id ??
+      p.state ??
+      p.state_id) as string | number | undefined;
+  return v != null ? String(v) : undefined;
 }
-function pickDistrictId(props: Record<string, any>, f?: Feature): string | undefined {
-  return (
-    (f as any)?.id ??
-    props.GID_2 ??
-    props.ADM2_PCODE ??
-    props.PCODE ??
-    props.CODE_2 ??
-    props.ID_2 ??
-    props.OBJECTID ??
-    props.id ??
-    undefined
-  )?.toString();
+
+function pickDistrictId(
+  props: Record<string, unknown>,
+  f?: Feature<Geometry, GeoJsonProperties>
+): string | undefined {
+  const p = props as Record<string, unknown>;
+  const v =
+    (f?.id as string | number | undefined) ??
+    (p.GID_2 as string | number | undefined) ??
+    (p.ADM2_PCODE as string | number | undefined) ??
+    (p.PCODE as string | number | undefined) ??
+    (p.CODE_2 as string | number | undefined) ??
+    (p.ID_2 as string | number | undefined) ??
+    (p.OBJECTID as string | number | undefined) ??
+    (p.id as string | number | undefined);
+  return v != null ? String(v) : undefined;
 }
-function pickDistrictName(props: Record<string, any>): string | undefined {
-  return (
-    props.NAME_2 ??
-    props.DIST_NAME ??
-    props.DISTRICT ??
-    props.NAME ??
-    props.en_name ??
-    props.local_name ??
-    undefined
-  )?.toString();
+
+function pickDistrictName(props: Record<string, unknown>): string | undefined {
+  const p = props as Record<string, unknown>;
+  const v =
+    (p.NAME_2 as string | undefined) ??
+    (p.DIST_NAME as string | undefined) ??
+    (p.DISTRICT as string | undefined) ??
+    (p.NAME as string | undefined) ??
+    (p.en_name as string | undefined) ??
+    (p.local_name as string | undefined);
+  return v != null ? String(v) : undefined;
 }
 
 // 🔧 이름 정규화(철자/발음 차이 보정: kh≈x, ph≈f 등)
@@ -84,8 +97,8 @@ export default function Page() {
 
   const [selected, setSelected] = useState<{ id: string | null; feature: F | null }>({ id: null, feature: null });
 
-  // 행정 선택 상태 (district 추가)
-  const [admin, setAdmin] = useState<AdminFormEx>({
+  // 행정 선택 상태 (District 포함)
+  const [admin, setAdmin] = useState<AdminUI>({
     country: "",
     state: "",
     district: "",
@@ -108,7 +121,7 @@ export default function Page() {
   const [selectedProvinceName, setSelectedProvinceName] = useState<string | null>(null);
 
   // 전체 초기화 트리거(로고 클릭 시 증가 → 레이어 강제 리마운트)
-  const [resetTick, setResetTick] = useState(0);
+  const [resetTick, setResetTick] = useState<number>(0);
 
   // ISO3 → 내부 CCode (ProvinceLayer용)
   const ccode: "LA" | "KH" | null = admin.country === "LAO" ? "LA" : admin.country === "KHM" ? "KH" : null;
@@ -121,7 +134,7 @@ export default function Page() {
     setDistrictOpts([]);
     setCityOpts([]);
     setVillageOpts([]);
-    setAdmin((p) => ({ ...p, state: "", district: "", city: "", village: "" }));
+    setAdmin((p: AdminUI) => ({ ...p, state: "", district: "", city: "", village: "" }));
   }, [admin.country]);
 
   // ✅ Province 선택 시 District 옵션을 '실데이터(GeoJSON)'로 채우기 (코드 또는 정규화된 이름 매칭)
@@ -132,7 +145,7 @@ export default function Page() {
         setDistrictOpts([]);
         setCityOpts([]);
         setVillageOpts([]);
-        setAdmin((prev) => ({ ...prev, district: "", city: "", village: "" }));
+        setAdmin((prev: AdminUI) => ({ ...prev, district: "", city: "", village: "" }));
         return;
       }
 
@@ -154,17 +167,17 @@ export default function Page() {
 
         const opts: Option[] = (fc.features ?? [])
           .filter((f) => {
-            const p = (f.properties ?? {}) as Record<string, any>;
+            const p = (f.properties ?? {}) as Record<string, unknown>;
             const provCode = (pickProvinceCode(p) ?? "").toString();
-            const provName = (p.NAME_1 ?? p.NAME ?? "").toString();
+            const provName = (p as Record<string, unknown>).NAME_1 ?? (p as Record<string, unknown>).NAME ?? "";
             // ① 코드 동일
             if (selectedProvinceId && provCode === selectedProvinceId) return true;
             // ② 이름 정규화 동일
-            if (selectedProvinceName && normalizeAdmName(provName) === selNameNorm) return true;
+            if (selectedProvinceName && normalizeAdmName(String(provName)) === selNameNorm) return true;
             return false;
           })
           .map((f) => {
-            const p = (f.properties ?? {}) as Record<string, any>;
+            const p = (f.properties ?? {}) as Record<string, unknown>;
             const id = pickDistrictId(p, f);
             const name = pickDistrictName(p) ?? id ?? "(unknown)";
             return { value: id!, label: name };
@@ -175,7 +188,7 @@ export default function Page() {
         setDistrictOpts(opts);
         setCityOpts([]);
         setVillageOpts([]);
-        setAdmin((prev) => ({ ...prev, district: "", city: "", village: "" }));
+        setAdmin((prev: AdminUI) => ({ ...prev, district: "", city: "", village: "" }));
       } catch (e) {
         console.error("[district] load options failed:", e);
         if (!aborted) {
@@ -203,7 +216,7 @@ export default function Page() {
       { value: "Village-01", label: "Village 01" },
       { value: "Village-02", label: "Village 02" },
     ]);
-    setAdmin((prev) => ({ ...prev, city: "", village: "" }));
+    setAdmin((prev: AdminUI) => ({ ...prev, city: "", village: "" }));
   }, [admin.country, admin.state, admin.district]);
 
   // 샘플 빌딩 로드
@@ -221,16 +234,16 @@ export default function Page() {
 
         setBuildings(fc);
 
-        const { default: Lmod } = await import("leaflet");
-        const layer = (Lmod as any).geoJSON(fc);
-        const bb = layer.getBounds?.();
+        const Lmod = await import("leaflet");
+        const layer = Lmod.geoJSON(fc); // L.GeoJSON 반환
+        const bb = layer.getBounds?.(); // LatLngBounds
         if (bb?.isValid?.()) {
           map.fitBounds(bb, { padding: [16, 16] });
           if (map.getZoom() < 16) map.setZoom(16);
         }
-      } catch (e: any) {
+      } catch (e) {
         console.error("[sample] load failed:", e);
-        if (!aborted) setLoadError(e?.message ?? "Unknown error");
+        if (!aborted) setLoadError(e instanceof Error ? e.message : "Unknown error");
       } finally {
         if (!aborted) setIsLoading(false);
       }
@@ -240,25 +253,15 @@ export default function Page() {
     };
   }, [map]);
 
-  function onSelect(f: F, layer: any) {
-    const id = (f as any)?.properties?.id ?? (f as any)?.id ?? null;
-    setSelected({ id, feature: f });
-    layer?.bringToFront?.();
-  }
+  function onSelect(f: F, layer: Layer | null) {
+    const id =
+      ((f as unknown as { properties?: Record<string, unknown> })?.properties?.id as string | number | undefined) ??
+      (f.id as string | number | undefined) ??
+      null;
+    setSelected({ id: id != null ? String(id) : null, feature: f });
 
-  async function generate() {
-    if (!selected.feature) {
-      alert("Please select a building first.");
-      return;
-    }
-    const out = buildAddressString(selected.feature, admin as AdminForm);
-    if (!out) {
-      alert("Failed to generate an address.");
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(out.addr);
-    } catch {}
+    // bringToFront는 Path 계열에서만 존재 → 안전 캐스팅 후 옵셔널 호출
+    (layer as BringToFrontCapable | null)?.bringToFront?.();
   }
 
   // 헤더 로고 클릭 시 완전 초기화
@@ -275,7 +278,7 @@ export default function Page() {
       setCityOpts([]);
       setVillageOpts([]);
       setSelected({ id: null, feature: null });
-      setResetTick((t) => t + 1);
+      setResetTick((t: number) => t + 1);
       map?.stop?.();
     };
     el.addEventListener("click", onClick);
@@ -296,7 +299,7 @@ export default function Page() {
     placeholder: string;
   }) {
     return (
-      <Select value={value ?? ""} onValueChange={(v) => onChange(v || undefined)} disabled={disabled}>
+      <Select value={value ?? ""} onValueChange={(v: string) => onChange(v || undefined)} disabled={disabled}>
         <SelectTrigger className="w-full h-8 rounded-md bg-white shadow-sm ring-1 ring-black/5 px-2 text-xs" aria-label={placeholder}>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
@@ -323,7 +326,7 @@ export default function Page() {
               <CountryLayer
                 key={`country-${resetTick}-${admin.country || "ALL"}`}
                 adminCountry={admin.country}
-                onPick={(iso) => {
+                onPick={(iso: string | null) => {
                   const v = iso || "";
                   setAdmin({ country: v, state: "", district: "", city: "", village: "" });
                   setSelectedProvinceId(null);
@@ -337,33 +340,34 @@ export default function Page() {
                   key={`prov-${resetTick}-${ccode}`}
                   country={ccode}
                   selectedId={selectedProvinceId}
-                  onReadyList={(rows) => {
-                    // value=id, label=name 유지
+                  onReadyList={(rows: Array<{ id: string; name: string }>) => {
                     const opts = rows
                       .map((r) => ({ value: r.id, label: r.name }))
                       .sort((a, b) => a.label.localeCompare(b.label));
                     setProvinceOpts(opts);
                   }}
-                  onSelectFeature={(f) => {
-                    // 지도에서 Province 클릭 시 id(=GID계열)와 name 모두 반영
-                    const p = (f?.properties ?? {}) as Record<string, any>;
+                  onSelectFeature={(f: F | null) => {
+                    const p = (f?.properties ?? {}) as Record<string, unknown>;
                     const gid1 =
-                      p.GID_1 ??
-                      p.ADM1_PCODE ??
-                      p.PCODE ??
-                      p.CODE_1 ??
-                      p.ID_1 ??
-                      p.PROV_CODE ??
-                      p.province_id ??
+                      (p.GID_1 as string | number | undefined) ??
+                      (p.ADM1_PCODE as string | number | undefined) ??
+                      (p.PCODE as string | number | undefined) ??
+                      (p.CODE_1 as string | number | undefined) ??
+                      (p.ID_1 as string | number | undefined) ??
+                      (p.PROV_CODE as string | number | undefined) ??
+                      (p.province_id as string | number | undefined) ??
                       null;
-                    const name1 = p.NAME_1 ?? p.NAME ?? null;
+                    const name1 =
+                      (p.NAME_1 as string | undefined) ??
+                      (p.NAME as string | undefined) ??
+                      null;
 
-                    const idStr = (gid1 ?? p.id ?? null)?.toString() ?? null;
-                    const nameStr = (name1 ?? "").toString() || null;
+                    const idStr = gid1 != null ? String(gid1) : (f?.id != null ? String(f.id) : null);
+                    const nameStr = name1 ? String(name1) : null;
 
                     setSelectedProvinceId(idStr);
                     setSelectedProvinceName(nameStr);
-                    setAdmin((prev) => ({
+                    setAdmin((prev: AdminUI) => ({
                       ...prev,
                       state: idStr || "",
                       district: "",
@@ -381,13 +385,20 @@ export default function Page() {
                   country={admin.country as "LAO" | "KHM"}
                   provinceCode={selectedProvinceId ?? selectedProvinceName ?? null}
                   visible={true}
-                  onSelect={(info) => {
+                  onSelect={(
+                    info: {
+                      id: string;
+                      name?: string;
+                      props: Record<string, unknown>;
+                      bbox?: LatLngBoundsLiteral;
+                    }
+                  ) => {
                     if (info.bbox && map) {
+                      // Leaflet의 LatLngBoundsLiteral = [[south, west], [north, east]]
                       const [[s, w], [n, e]] = info.bbox;
-                      // @ts-ignore
                       map.fitBounds([[s, w], [n, e]], { padding: [12, 12] });
                     }
-                    setAdmin((prev) => ({ ...prev, district: info.id || "" }));
+                    setAdmin((prev: AdminUI) => ({ ...prev, district: info.id || "" }));
                   }}
                 />
               )}
@@ -432,7 +443,7 @@ export default function Page() {
                         const picked = provinceOpts.find((o) => o.value === (v ?? ""));
                         setSelectedProvinceId(v || null);
                         setSelectedProvinceName(picked?.label ?? null);
-                        setAdmin((prev) => ({ ...prev, state: v || "", district: "", city: "", village: "" }));
+                        setAdmin((prev: AdminUI) => ({ ...prev, state: v || "", district: "", city: "", village: "" }));
                       }}
                       options={provinceOpts}
                       disabled={!admin.country}
@@ -446,7 +457,7 @@ export default function Page() {
                   <div className="w-40 transition-all duration-200 ease-out">
                     <SelectField
                       value={admin.district ?? ""}
-                      onChange={(v) => setAdmin((prev) => ({ ...prev, district: v || "", city: "", village: "" }))}
+                      onChange={(v) => setAdmin((prev: AdminUI) => ({ ...prev, district: v || "", city: "", village: "" }))}
                       options={districtOpts}
                       disabled={!admin.state}
                       placeholder="District"
@@ -459,7 +470,7 @@ export default function Page() {
                   <div className="w-36 transition-all duration-200 ease-out">
                     <SelectField
                       value={admin.city}
-                      onChange={(v) => setAdmin((prev) => ({ ...prev, city: v || "", village: "" }))}
+                      onChange={(v) => setAdmin((prev: AdminUI) => ({ ...prev, city: v || "", village: "" }))}
                       options={cityOpts}
                       disabled={!admin.district}
                       placeholder="City"
@@ -472,13 +483,21 @@ export default function Page() {
                   <div className="w-36 transition-all duration-200 ease-out">
                     <SelectField
                       value={admin.village}
-                      onChange={(v) => setAdmin((prev) => ({ ...prev, village: v || "" }))}
+                      onChange={(v) => setAdmin((prev: AdminUI) => ({ ...prev, village: v || "" }))}
                       options={villageOpts}
                       disabled={!admin.city}
                       placeholder="Village"
                     />
                   </div>
                 )}
+
+                {/* 예시: 주소 생성 버튼 (원하면 노출) */}
+                {/* <button
+                  onClick={generate}
+                  className="ml-2 rounded-md border px-2 py-1 text-xs bg-white hover:bg-gray-50"
+                >
+                  Copy Address
+                </button> */}
               </div>
             </div>
 

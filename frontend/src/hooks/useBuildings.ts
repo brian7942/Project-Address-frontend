@@ -1,76 +1,82 @@
-// hooks/useBuildings.ts
-"use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { BuildingFC } from "@/types/geo";
 
-type FC = GeoJSON.FeatureCollection;
-type Fetcher = (bbox: string, zoom: number, signal: AbortSignal) => Promise<FC>;
+type UseBuildingsParams = {
+  /** [minX, minY, maxX, maxY] (경도/위도 순, WGS84) */
+  bbox?: [number, number, number, number];
+  /** ADM 구역 식별자 등 */
+  districtId?: string;
+  /** 커스텀 엔드포인트가 필요하면 지정 */
+  url?: string;
+};
 
-export function useBuildings(map: L.Map | null, fetcher: Fetcher) {
-  const [data, setData] = useState<FC | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setErr] = useState<string | null>(null);
-  const acRef = useRef<AbortController | null>(null);
-  const timer = useRef<any>(null);
-  const cache = useRef<Map<string, FC>>(new Map());
+type UseBuildingsResult = {
+  data: BuildingFC | null;
+  loading: boolean;
+  error: Error | null;
+  /** 재조회 */
+  refetch: () => void;
+};
 
-  function keyFrom(map: L.Map) {
-    const b = map.getBounds();
-    const z = map.getZoom();
-    // 키 안정화를 위해 좌표를 약간 라운딩
-    const k = [
-      Math.round(b.getWest() * 1000) / 1000,
-      Math.round(b.getSouth() * 1000) / 1000,
-      Math.round(b.getEast() * 1000) / 1000,
-      Math.round(b.getNorth() * 1000) / 1000,
-      z,
-    ].join(",");
-    return { k, bbox: `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`, z };
-  }
+export function useBuildings(
+  { bbox, districtId, url = "/api/buildings" }: UseBuildingsParams
+): UseBuildingsResult {
+  const [data, setData] = useState<BuildingFC | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [reloadKey, setReloadKey] = useState<number>(0);
+
+  // ✅ 의존성에서 사용할 bboxKey는 useMemo로 계산
+  const bboxKey = useMemo(() => (Array.isArray(bbox) ? bbox.join(",") : ""), [bbox]);
 
   useEffect(() => {
-    if (!map) return;
+    let aborted = false;
 
-    const run = () => {
-      const { k, bbox, z } = keyFrom(map);
-
-      if (cache.current.has(k)) {
-        setData(cache.current.get(k)!);
-        return;
-      }
-
-      if (acRef.current) acRef.current.abort();
-      const ac = new AbortController();
-      acRef.current = ac;
-
+    async function run() {
       setLoading(true);
-      setErr(null);
+      setError(null);
 
-      fetcher(bbox, z, ac.signal)
-        .then((fc) => {
-          cache.current.set(k, fc);
-          setData(fc);
-        })
-        .catch((e) => {
-          if (e?.name !== "AbortError") setErr(e?.message ?? "fetch failed");
-        })
-        .finally(() => setLoading(false));
-    };
+      try {
+        const params = new URLSearchParams();
+        if (bboxKey) params.set("bbox", bboxKey);
+        if (districtId) params.set("districtId", districtId);
 
-    const onMoveEnd = () => {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(run, 250); // 디바운스
-    };
+        const resp = await fetch(`${url}?${params.toString()}`, {
+          headers: { Accept: "application/json" },
+        });
 
-    map.on("moveend zoomend", onMoveEnd);
-    // 첫 로드도 실행
-    onMoveEnd();
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
+        const json = (await resp.json()) as BuildingFC;
+
+        const isFC =
+          json &&
+          typeof json === "object" &&
+          json.type === "FeatureCollection" &&
+          Array.isArray(json.features);
+
+        if (!isFC) throw new Error("Invalid GeoJSON FeatureCollection");
+
+        if (!aborted) setData(json);
+      } catch (e: unknown) {
+        if (!aborted) {
+          setError(e instanceof Error ? e : new Error("Unknown error"));
+          setData(null);
+        }
+      } finally {
+        if (!aborted) setLoading(false);
+      }
+    }
+
+    run();
     return () => {
-      map.off("moveend zoomend", onMoveEnd);
-      if (timer.current) clearTimeout(timer.current);
-      if (acRef.current) acRef.current.abort();
+      aborted = true;
     };
-  }, [map, fetcher]);
+  }, [bboxKey, districtId, url, reloadKey]); // ✅ 깔끔한 의존성
 
-  return { data, loading, error };
+  const refetch = () => setReloadKey((k) => k + 1);
+
+  return { data, loading, error, refetch };
 }
+
+export default useBuildings;
