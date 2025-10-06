@@ -9,10 +9,12 @@ import type {
   MultiPolygon,
   Polygon,
   GeoJsonProperties,
+  GeoJsonObject,
 } from "geojson";
 
 type G = Polygon | MultiPolygon;
-type FC = FeatureCollection<G, any>;
+type Props = Record<string, unknown>;
+type FC = FeatureCollection<G, Props>;
 
 const ALLOWED = new Set(["LAO", "KHM"]); // 라오스/캄보디아만
 
@@ -24,9 +26,9 @@ function getIso(props: GeoJsonProperties | null | undefined): string | undefined
 
 export default function WorldMap() {
   const [data, setData] = useState<FC | null>(null);
-  const geoRef = useRef<L.GeoJSON<any>>(null);
+  const geoRef = useRef<L.GeoJSON | null>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const selectedLayerRef = useRef<L.Layer | null>(null);
+  const selectedLayerRef = useRef<L.Path | null>(null);
 
   const base: PathOptions = useMemo(
     () => ({ color: "#1f2937", weight: 1, opacity: 0.8, fill: true, fillOpacity: 0 }),
@@ -47,18 +49,21 @@ export default function WorldMap() {
         if (!r.ok) throw new Error(`Fetch failed: ${r.status}`);
         return r.json();
       })
-      .then(setData)
+      .then((j) => setData(j as FC))
       .catch((e) => console.error("[countries] load error:", e));
   }, []);
 
   // 데이터 로드 후 LAO+KHM 자동 맞춤
   useEffect(() => {
     if (!data || !mapRef.current) return;
+
     const filtered: FC = {
       type: "FeatureCollection",
-      features: data.features.filter((f) => ALLOWED.has(getIso(f.properties) ?? "")) as any,
+      features: data.features.filter((f) => ALLOWED.has(getIso(f.properties) ?? "")),
     };
-    const b = L.geoJSON(filtered as any).getBounds();
+
+    const layer = L.geoJSON(filtered as unknown as GeoJsonObject);
+    const b = layer.getBounds();
     if (b.isValid()) {
       mapRef.current.fitBounds(b, { padding: [32, 32], maxZoom: 6 });
     }
@@ -67,35 +72,49 @@ export default function WorldMap() {
   function resetAll() {
     const g = geoRef.current;
     if (!g) return;
-    g.eachLayer((lyr: any) => lyr.setStyle?.(base));
+    g.eachLayer((lyr) => {
+      if (lyr instanceof L.Path) {
+        lyr.setStyle(base);
+      }
+    });
   }
 
-  function onEachFeature(feature: Feature<G, GeoJsonProperties>, layer: L.Layer) {
-    (layer as any).setStyle?.(base);
+  function onEachFeature(_feature: Feature<G, GeoJsonProperties>, layer: L.Layer) {
+    if (layer instanceof L.Path) layer.setStyle(base);
 
     layer.on("mouseover", () => {
-      (layer as any).setStyle?.(hover);
-      const el = (layer as any).getElement?.();
-      if (el) el.style.cursor = "pointer";
+      if (layer instanceof L.Path) {
+        layer.setStyle(hover);
+        const el = layer.getElement?.() as SVGElement | HTMLElement | null | undefined;
+        if (el && (el instanceof SVGElement || el instanceof HTMLElement)) {
+          el.style.cursor = "pointer";
+        }
+      }
     });
 
     layer.on("mouseout", () => {
+      if (!(layer instanceof L.Path)) return;
       if (selectedLayerRef.current === layer) {
-        (layer as any).setStyle?.(selected);
+        layer.setStyle(selected);
       } else {
-        (layer as any).setStyle?.(base);
+        layer.setStyle(base);
       }
     });
 
     layer.on("click", () => {
       resetAll();
-      selectedLayerRef.current = layer;
-      (layer as any).setStyle?.(selected);
-      (layer as any).bringToFront?.();
+      if (layer instanceof L.Path) {
+        selectedLayerRef.current = layer;
+        layer.setStyle(selected);
+        layer.bringToFront?.();
+      }
 
-      const bounds = (layer as any).getBounds?.();
-      if (bounds?.isValid?.()) {
-        (layer as any)._map.flyToBounds(bounds, { padding: [32, 32], maxZoom: 7, duration: 0.7 });
+      // 폴리곤/멀티폴리곤에서 경계 구해 flyToBounds
+      if (layer instanceof L.Polygon) {
+        const bounds = layer.getBounds();
+        if (bounds.isValid() && mapRef.current) {
+          mapRef.current.flyToBounds(bounds, { padding: [32, 32], maxZoom: 7, duration: 0.7 });
+        }
       }
     });
   }
@@ -107,7 +126,10 @@ export default function WorldMap() {
       className="h-full w-full rounded-2xl overflow-hidden"
       zoomControl
       worldCopyJump
-      whenCreated={(map: L.Map) => (mapRef.current = map)}
+      // whenCreated 제거 → whenReady로 Map 인스턴스 확보
+      whenReady={(e: L.LeafletEvent) => {
+        mapRef.current = e.target as L.Map;
+      }}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
@@ -116,8 +138,8 @@ export default function WorldMap() {
 
       {data && (
         <GeoJSON
-          ref={geoRef as any}
-          data={data as any}
+          ref={geoRef}
+          data={data as unknown as GeoJsonObject}
           style={() => base}
           onEachFeature={onEachFeature}
           bubblingMouseEvents={false}
