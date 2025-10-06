@@ -127,8 +127,8 @@ export default function WorldMap() {
       zoomControl
       worldCopyJump
       // whenCreated 제거 → whenReady로 Map 인스턴스 확보
-      whenReady={(e: L.LeafletEvent) => {
-        mapRef.current = e.target as L.Map;
+      ref={(map: L.Map | null) => {
+        mapRef.current = map;
       }}
     >
       <TileLayer
