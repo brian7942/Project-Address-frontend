@@ -1,131 +1,84 @@
 "use client";
 
-import { memo, useMemo } from "react";
 import { GeoJSON } from "react-leaflet";
-import type { GeoJSON as LeafletGeoJSON, Layer, LatLng } from "leaflet";
-import L from "leaflet";
+import L, { PathOptions, LatLng } from "leaflet";
+import { useMemo } from "react";
 import type {
-  Geometry,
   Feature,
-  Point,
-  LineString,
-  MultiLineString,
-  Polygon,
-  MultiPolygon,
+  FeatureCollection,
+  Geometry,
+  GeoJsonObject,
 } from "geojson";
-import type {
-  BuildingFC,
-  BuildingProperties,
-  FeatureAnyGeom,
-} from "@/types/geo";
 
-/**
- * GeoJSON을 그대로 표시하는 범용 레이어.
- * - 포인트는 circleMarker로 렌더링
- * - 라인/폴리곤은 기본 스타일 적용
- */
 type Props = {
-  /** GeoJSON FeatureCollection */
-  data: BuildingFC | {
-    type: "FeatureCollection";
-    features: Array<Feature<
-      Point | LineString | MultiLineString | Polygon | MultiPolygon,
-      Record<string, unknown>
-    >>;
-  };
-  /** 라벨/팝업에 표시할 속성 키 (예: "name") */
-  labelKey?: string;
-  /** 활성/선택 상태 등 외부에서 스타일에 반영하고 싶을 때 전달 */
-  isActiveFeature?: (f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>) => boolean;
-  /** 클릭 등 이벤트 핸들러 */
-  onFeatureClick?: (f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>) => void;
-  /** 마우스오버 핸들러 */
-  onFeatureHover?: (f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>) => void;
-  /** 마우스아웃 핸들러 */
-  onFeatureOut?: (f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>) => void;
-  /** GeoJSON 스타일 오버라이드 */
-  styleOverride?: (
-    f: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>
-  ) => L.PathOptions | undefined;
+  /** 폴리곤/라인/포인트 섞여 있어도 OK */
+  data: FeatureCollection<Geometry, Record<string, unknown>>;
+  interactive?: boolean;
+  onSelect?: (f: Feature<Geometry, Record<string, unknown>>, layer: L.Layer) => void;
+  pane?: string;
 };
 
-function getDefaultStyle(
-  active: boolean
-): L.PathOptions {
-  return {
-    color: active ? "#ef4444" : "#2563eb",
-    weight: active ? 3 : 2,
-    opacity: 0.9,
-    fillOpacity: 0.2,
-  };
-}
-
-function StaticLayerImpl({
+export default function StaticLayer({
   data,
-  labelKey = "name",
-  isActiveFeature,
-  onFeatureClick,
-  onFeatureHover,
-  onFeatureOut,
-  styleOverride,
+  interactive = true,
+  onSelect,
+  pane,
 }: Props) {
-  const styleFn = useMemo(() => {
-    return (feat: FeatureAnyGeom<BuildingProperties | Record<string, unknown>>): L.PathOptions => {
-      const active = isActiveFeature ? isActiveFeature(feat) : false;
-      const base = getDefaultStyle(active);
-      const override = styleOverride?.(feat);
-      return { ...base, ...(override ?? {}) };
-    };
-  }, [isActiveFeature, styleOverride]);
+  // 기본/호버/선택 스타일
+  const base = useMemo<PathOptions>(
+    () => ({ color: "#374151", weight: 1, opacity: 0.9, fill: true, fillOpacity: 0.05 }),
+    []
+  );
+  const hover = useMemo<PathOptions>(
+    () => ({ color: "#06b6d4", weight: 2, opacity: 1, fill: true, fillOpacity: 0.08 }),
+    []
+  );
 
-  const pointToLayer = (
-    feat: Feature<Geometry, BuildingProperties | Record<string, unknown>>,
+  // ✅ react-leaflet의 타입과 일치: feature는 optional, 제네릭 any
+  const styleFn: L.StyleFunction<any> = (feature?: Feature<Geometry, any>) => {
+    // 필요시 feature?.properties 로 분기
+    return base;
+  };
+
+  // 포인트는 circleMarker로
+  function pointToLayer(
+    feature: Feature<Geometry, any>,
     latlng: LatLng
-  ) => {
-    const active = isActiveFeature ? isActiveFeature(feat) : false;
-    const opts: L.CircleMarkerOptions = {
-      radius: active ? 5 : 4,
-      weight: 1,
-      opacity: 1,
-      fillOpacity: 0.7,
-    };
-    return L.circleMarker(latlng, opts);
-  };
+  ): L.Layer {
+    return L.circleMarker(latlng, { radius: 4, ...base });
+  }
 
-  const onEachFeature = (
-    feature: Feature<Geometry, BuildingProperties | Record<string, unknown>>,
-    layer: Layer
-  ) => {
-    // 안전 접근
-    const props = feature.properties ?? {};
-    // 라벨 추출
-    const labelValue = (props as Record<string, unknown>)[labelKey];
-    const label = typeof labelValue === "string" ? labelValue : "";
-
-    if (label) {
-      (layer as LeafletGeoJSON).bindTooltip?.(label, { sticky: true });
+  // 인터랙션 바인딩
+  function onEachFeature(
+    feature: Feature<Geometry, Record<string, unknown>>,
+    layer: L.Layer
+  ) {
+    if (layer instanceof L.Path) {
+      layer.on("mouseover", () => {
+        layer.setStyle(hover);
+        const el = (layer as L.Path).getElement?.() as SVGElement | HTMLElement | null | undefined;
+        if (el && (el instanceof SVGElement || el instanceof HTMLElement)) {
+          el.style.cursor = "pointer";
+        }
+      });
+      layer.on("mouseout", () => {
+        layer.setStyle(base);
+      });
     }
-
-    layer.on("click", () => {
-      onFeatureClick?.(feature);
-    });
-    layer.on("mouseover", () => {
-      onFeatureHover?.(feature);
-    });
-    layer.on("mouseout", () => {
-      onFeatureOut?.(feature);
-    });
-  };
+    if (interactive) {
+      layer.on("click", () => onSelect?.(feature, layer));
+    }
+  }
 
   return (
     <GeoJSON
-      data={data as unknown as GeoJSON.GeoJsonObject}
+      data={data as unknown as GeoJsonObject}
       style={styleFn}
       pointToLayer={pointToLayer}
       onEachFeature={onEachFeature}
+      pane={pane}
+      bubblingMouseEvents={false}
+      interactive={interactive}
     />
   );
 }
-
-export const StaticLayer = memo(StaticLayerImpl);
-export default StaticLayer;
