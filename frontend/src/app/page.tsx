@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { FeatureCollection, Geometry, GeoJsonProperties, Feature } from "geojson";
 import type { Map as LeafletMap, Layer, LatLngBoundsLiteral } from "leaflet";
+import type { BuildingFC, BuildingProperties } from "@/types/geo";
 
 // shadcn/ui
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
@@ -253,12 +254,40 @@ export default function Page() {
     };
   }, [map]);
 
-  function onSelect(f: F, layer: Layer | null) {
+  // ✅ BuildingLayer가 요구하는 BuildingFC로 변환
+  const buildingFC = useMemo<BuildingFC | null>(() => {
+    if (!buildings) return null;
+    const features = (buildings.features ?? [])
+      .filter((f) => f.geometry?.type === "Point")
+      .map((f) => {
+        const p = (f.properties ?? {}) as Record<string, unknown>;
+        const props: BuildingProperties = {
+          id: String(
+            (p.id as string | number | undefined) ??
+              (f.id as string | number | undefined) ??
+              ""
+          ),
+          name: (p.name as string | null | undefined) ?? null,
+          housenumber: (p.housenumber as string | null | undefined) ?? null,
+          street: (p.street as string | null | undefined) ?? null,
+          road_id: (p.road_id as string | null | undefined) ?? null,
+          village: (p.village as string | null | undefined) ?? null,
+          district: (p.district as string | null | undefined) ?? null,
+          province: (p.province as string | null | undefined) ?? null,
+          country: (p.country as string | null | undefined) ?? null,
+        };
+        return { ...f, properties: props };
+      });
+    return { type: "FeatureCollection", features };
+  }, [buildings]);
+
+  // BuildingLayer 시그니처에 맞춰 타입 지정
+  function onSelect(f: Feature<Geometry, BuildingProperties>, layer: Layer) {
     const id =
-      ((f as unknown as { properties?: Record<string, unknown> })?.properties?.id as string | number | undefined) ??
+      (f.properties?.id as string | number | undefined) ??
       (f.id as string | number | undefined) ??
       null;
-    setSelected({ id: id != null ? String(id) : null, feature: f });
+    setSelected({ id: id != null ? String(id) : null, feature: f as unknown as F });
 
     // bringToFront는 Path 계열에서만 존재 → 안전 캐스팅 후 옵셔널 호출
     (layer as BringToFrontCapable | null)?.bringToFront?.();
@@ -404,8 +433,8 @@ export default function Page() {
               )}
 
               {/* 건물 레이어 */}
-              {buildings && !loadError && (
-                <BuildingLayer data={buildings} selectedId={selected.id} onSelect={onSelect} />
+              {buildingFC && !loadError && (
+                <BuildingLayer data={buildingFC} selectedId={selected.id} onSelect={onSelect} />
               )}
             </MapBase>
 
