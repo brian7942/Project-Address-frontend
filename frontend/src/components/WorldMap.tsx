@@ -16,7 +16,7 @@ type G = Polygon | MultiPolygon;
 type Props = Record<string, unknown>;
 type FC = FeatureCollection<G, Props>;
 
-const ALLOWED = new Set(["LAO", "KHM"]); // 라오스/캄보디아만
+const ALLOWED = new Set(["LAO"]); // 라오스만
 
 // ISO 헬퍼
 function getIso(props: GeoJsonProperties | null | undefined): string | undefined {
@@ -53,7 +53,7 @@ export default function WorldMap() {
       .catch((e) => console.error("[countries] load error:", e));
   }, []);
 
-  // 데이터 로드 후 LAO+KHM 자동 맞춤
+  // 데이터 로드 후 LAO 자동 맞춤
   useEffect(() => {
     if (!data || !mapRef.current) return;
 

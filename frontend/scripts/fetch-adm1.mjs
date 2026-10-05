@@ -5,7 +5,6 @@ import { Agent, ProxyAgent } from 'undici';
 
 const targets = [
   { iso3: 'LAO', out: 'laos_provinces.geojson', cc: 'LA' },
-  { iso3: 'KHM', out: 'cambodia_provinces.geojson', cc: 'KH' },
 ];
 
 // ---- CLI args ----

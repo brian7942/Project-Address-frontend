@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type AdminGeom = Feature<Polygon | MultiPolygon, any>;
 type FC = FeatureCollection<Geometry, any>;
-type CCode = "LA" | "KH";
+type CCode = "LA";
 
 type Props = {
   country: CCode;
@@ -73,7 +73,7 @@ export default function ProvinceLayer({
   useEffect(() => {
     let alive = true;
     (async () => {
-      const file = country === "LA" ? "/data/laos_provinces.geojson" : "/data/cambodia_provinces.geojson";
+      const file = "/data/laos_provinces.geojson";
       const data = await fetch(file).then((r) => r.json()).catch(() => null);
       if (!alive) return;
       if (data && Array.isArray(data.features)) {

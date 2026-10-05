@@ -64,7 +64,7 @@ export default function AboutPage() {
           <div className="mt-8 rounded-lg border p-5">
             <h2 className="text-xl font-semibold">Roadmap</h2>
             <ol className="mt-3 list-decimal pl-5 text-gray-700 space-y-1">
-              <li>MVP across select provinces in Laos and Cambodia</li>
+              <li>MVP across select provinces in Laos</li>
               <li>Stabilize hybrid numbering and ensure no duplicates</li>
               <li>Improve AI ordering and generation with user feedback</li>
               <li>Expose APIs and Data Studio with commercial licensing</li>

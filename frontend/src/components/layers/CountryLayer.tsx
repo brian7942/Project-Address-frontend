@@ -7,11 +7,10 @@ import type { Feature, FeatureCollection, GeoJsonProperties } from "geojson";
 import type { PathOptions } from "leaflet";
 
 type G = GeoJSON.Polygon | GeoJSON.MultiPolygon;
-type ISO3 = "LAO" | "KHM";
+type ISO3 = "LAO";
 
 const LOCAL_ISO_URL: Record<ISO3, string> = {
   LAO: "/data/laos_country.geojson",
-  KHM: "/data/cambodia_country.geojson",
 };
 
 const BASE_PADDING = 24;           // 공통 패딩(px) - 줌 계산에 사용
@@ -38,7 +37,7 @@ async function loadAdm0One(iso: ISO3): Promise<Feature<G, GeoJsonProperties>[]> 
       const j = (await fetchJSON(url)) as FeatureCollection<G, any>;
       const feats = (j.features ?? []).map((f) => ({
         ...f,
-        properties: { ...f.properties, iso: normIso(f.properties, iso), name: normName(f.properties, iso === "LAO" ? "Laos" : "Cambodia") },
+        properties: { ...f.properties, iso: normIso(f.properties, iso), name: normName(f.properties, "Laos") },
       })) as Feature<G, GeoJsonProperties>[];
       if (feats.length) return feats;
     } catch {}
@@ -55,7 +54,7 @@ async function loadAdm0One(iso: ISO3): Promise<Feature<G, GeoJsonProperties>[]> 
       })
       .map((f) => ({
         ...f,
-        properties: { ...f.properties, iso, name: normName(f.properties, iso === "LAO" ? "Laos" : "Cambodia") },
+        properties: { ...f.properties, iso, name: normName(f.properties, "Laos") },
       })) as Feature<G, GeoJsonProperties>[];
     if (feats.length) return feats;
   } catch {}
@@ -66,7 +65,7 @@ async function loadAdm0One(iso: ISO3): Promise<Feature<G, GeoJsonProperties>[]> 
     const j = (await fetchJSON(url)) as FeatureCollection<G, any>;
     const feats = (j.features ?? []).map((f) => ({
       ...f,
-      properties: { ...f.properties, iso, name: normName(f.properties, iso === "LAO" ? "Laos" : "Cambodia") },
+      properties: { ...f.properties, iso, name: normName(f.properties, "Laos") },
     })) as Feature<G, GeoJsonProperties>[];
     if (feats.length) return feats;
   } catch {}
@@ -77,7 +76,7 @@ async function loadAdm0One(iso: ISO3): Promise<Feature<G, GeoJsonProperties>[]> 
     const j = (await fetchJSON(url)) as FeatureCollection<G, any>;
     const feats = (j.features ?? []).map((f) => ({
       ...f,
-      properties: { ...f.properties, iso, name: normName(f.properties, iso === "LAO" ? "Laos" : "Cambodia") },
+      properties: { ...f.properties, iso, name: normName(f.properties, "Laos") },
     })) as Feature<G, GeoJsonProperties>[];
     if (feats.length) return feats;
   } catch {}
@@ -90,7 +89,7 @@ export default function CountryLayer({
   adminCountry,
   onPick,
 }: {
-  /** ISO3: "LAO" | "KHM" | ""(초기) */
+  /** ISO3: "LAO" | ""(초기) */
   adminCountry?: string;
   onPick?: (iso: string, name?: string) => void;
 }) {
@@ -105,16 +104,16 @@ export default function CountryLayer({
   const hover = useMemo<PathOptions>(() => ({ ...base, weight: 2, color: "#10b981", fillOpacity: 0.08 }), [base]);
   const selected = useMemo<PathOptions>(() => ({ ...base, weight: 3, color: "#ef4444", fillOpacity: 0.12 }), [base]);
 
-  // 두 나라 ADM0 로드
+  // 라오스 ADM0 로드
   useEffect(() => {
     let abort = false;
     (async () => {
       try {
-        const [lao, khm] = await Promise.all([loadAdm0One("LAO"), loadAdm0One("KHM")]);
+        const lao = await loadAdm0One("LAO");
         if (abort) return;
         const merged: FeatureCollection<G, GeoJsonProperties> = {
           type: "FeatureCollection",
-          features: [...lao, ...khm],
+          features: [...lao],
         };
         setFc(merged);
       } catch (e) {
@@ -216,10 +215,10 @@ export default function CountryLayer({
 
   if (!fc) return null;
 
-  // 선택이 있으면 해당 ISO만, 없으면 LAO/KHM 모두
+  // 선택이 있으면 해당 ISO만, 없으면 LAO
   const filterFn = (f: Feature<G, GeoJsonProperties>) => {
     const iso = (f.properties as any)?.iso ?? "";
-    if (!["LAO", "KHM"].includes(iso)) return false;
+    if (iso !== "LAO") return false;
     return visibleIso ? iso === visibleIso : true;
   };
 

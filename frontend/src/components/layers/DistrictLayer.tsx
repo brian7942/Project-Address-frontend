@@ -11,7 +11,7 @@ import type {
 } from "geojson";
 
 type Props = {
-  country: "LAO" | "KHM";
+  country: "LAO";
   /** Province 식별자: 코드(id) 또는 이름 */
   provinceCode: string | null;
   visible?: boolean;
@@ -111,10 +111,7 @@ export default function DistrictLayer({
   useEffect(() => {
     let aborted = false;
     async function run() {
-      const url =
-        country === "LAO"
-          ? "/data/laos_districts.geojson"
-          : "/data/cambodia_districts.geojson";
+      const url = "/data/laos_districts.geojson";
       try {
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

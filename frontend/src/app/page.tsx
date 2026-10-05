@@ -25,7 +25,7 @@ type BringToFrontCapable = Layer & { bringToFront?: () => void };
 
 // 페이지 로컬 UI 상태 타입 (드롭다운 값 보관용)
 type AdminUI = {
-  country: string; // ISO3 ("LAO" | "KHM")
+  country: string; // ISO3 ("LAO")
   state: string;   // province code/id
   district: string;
   city: string;
@@ -110,7 +110,6 @@ export default function Page() {
   // 드롭다운 옵션
   const [countryOpts] = useState<Option[]>([
     { value: "LAO", label: "Laos" },
-    { value: "KHM", label: "Cambodia" },
   ]);
   const [provinceOpts, setProvinceOpts] = useState<Option[]>([]);
   const [districtOpts, setDistrictOpts] = useState<Option[]>([]);
@@ -125,7 +124,7 @@ export default function Page() {
   const [resetTick, setResetTick] = useState<number>(0);
 
   // ISO3 → 내부 CCode (ProvinceLayer용)
-  const ccode: "LA" | "KH" | null = admin.country === "LAO" ? "LA" : admin.country === "KHM" ? "KH" : null;
+  const ccode: "LA" | null = admin.country === "LAO" ? "LA" : null;
 
   // 국가가 바뀌면 하위 초기화
   useEffect(() => {
@@ -152,11 +151,7 @@ export default function Page() {
 
       try {
         const url =
-          admin.country === "LAO"
-            ? "/data/laos_districts.geojson"
-            : admin.country === "KHM"
-            ? "/data/cambodia_districts.geojson"
-            : null;
+          admin.country === "LAO" ? "/data/laos_districts.geojson" : null;
         if (!url) return;
 
         const res = await fetch(url, { cache: "no-store" });
@@ -411,7 +406,7 @@ export default function Page() {
               {admin.country && (selectedProvinceId || selectedProvinceName) && (
                 <DistrictLayer
                   key={`dist-${resetTick}-${admin.country}-${selectedProvinceId || selectedProvinceName}`}
-                  country={admin.country as "LAO" | "KHM"}
+                  country={admin.country as "LAO"}
                   provinceCode={selectedProvinceId ?? selectedProvinceName ?? null}
                   visible={true}
                   onSelect={(
