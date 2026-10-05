@@ -31,7 +31,7 @@ export default function AboutPage() {
 
           <h1 className="mt-3 text-3xl font-bold">About Project:Address</h1>
           <p className="mt-3 text-gray-700">
-            Project:Address is an AI-powered digital addressing system for regions with
+            Project:Address is a digital addressing system for regions with
             limited or inconsistent address infrastructure. We combine official administrative
             boundaries with OpenStreetMap buildings and roads to algorithmically generate
             block and building numbers, then assemble them into consistent, human-readable
@@ -55,8 +55,7 @@ export default function AboutPage() {
                 <li>Frontend: Next.js, React, Tailwind, Leaflet</li>
                 <li>Backend: FastAPI</li>
                 <li>Database & GIS: PostgreSQL + PostGIS</li>
-                <li>Data Sources: OpenStreetMap + official administrative boundaries</li>
-                <li>AI: rules to start, learning-based over time</li>
+                <li>Data Sources: OpenStreetMap + open administrative boundary data</li>
               </ul>
             </div>
           </div>
@@ -66,7 +65,7 @@ export default function AboutPage() {
             <ol className="mt-3 list-decimal pl-5 text-gray-700 space-y-1">
               <li>MVP across select provinces in Laos</li>
               <li>Stabilize hybrid numbering and ensure no duplicates</li>
-              <li>Improve AI ordering and generation with user feedback</li>
+              <li>Improve ordering and generation with user feedback</li>
               <li>Expose APIs and Data Studio with commercial licensing</li>
             </ol>
           </div>
