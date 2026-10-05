@@ -1,6 +1,6 @@
 # Project:Address — frontend
 
-**Digital addresses for places without a reliable address system.** This is the web map for [Project:Address](https://projectaddress.dev), starting with **Laos and Cambodia**.
+**Digital addresses for places without a reliable address system.** This is the web map for [Project:Address](https://projectaddress.dev), starting with **Laos**.
 
 🌐 **Live:** [projectaddress.dev](https://projectaddress.dev)
 
@@ -12,7 +12,7 @@ The project started from parcel deliveries failing in Laos, where many buildings
 
 The Next.js frontend:
 
-- **Administrative drill-down:** pick a country, then a province, then a district. The map zooms and highlights each level, with boundaries for Laos and Cambodia loaded as GeoJSON.
+- **Administrative drill-down:** pick a province, then a district. The map zooms and highlights each level, with Laos boundaries loaded as GeoJSON.
 - **Building layer:** building footprints with their generated address attributes (street, house number, admin units). The MVP renders a sample dataset.
 - **Address formatting:** builds a display address from the admin hierarchy plus building attributes, with defensive parsing of external GeoJSON, which can be missing fields or mix types.
 - **Boundary fetch scripts:** `scripts/fetch-adm*.mjs` pull ADM0/ADM1 boundaries from [geoBoundaries](https://www.geoboundaries.org/) (pinned release, proxy-aware).
